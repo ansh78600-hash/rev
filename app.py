@@ -164,7 +164,7 @@ if build_bank_btn:
                         types.Part.from_bytes(data=cam_bytes, mime_type="image/jpeg")
                     )
 
-                # Using Gemini 2.0 Flash model here
+                # Using Gemini 3.5 Flash Lite model with high daily quota (500 RPD)
                 if contents_list:
                     contents_list.append(prompt)
                     response = call_gemini_with_retry(
@@ -190,25 +190,34 @@ if build_bank_btn:
 
                 questions_list = json.loads(text_resp.strip())
 
-                # Save to SQLite Database using INSERT OR IGNORE (Anti-Duplicate)
+                # Save to SQLite Database with Strict Duplicate Checking
                 conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
                 added_count = 0
 
                 for q in questions_list:
+                    clean_question = q["question"].strip()
+                    
+                    # Check if question already exists in DB
                     cursor.execute(
-                        """
-                            INSERT OR IGNORE INTO questions (question, options, correct, explanation, asked)
-                            VALUES (?, ?, ?, ?, 0)
-                        """,
-                        (
-                            q["question"],
-                            json.dumps(q["options"]),
-                            q["correct"],
-                            q["explanation"],
-                        ),
+                        "SELECT id FROM questions WHERE question = ?", (clean_question,)
                     )
-                    if cursor.rowcount > 0:
+                    existing_q = cursor.fetchone()
+
+                    # Insert only if it does not exist
+                    if not existing_q:
+                        cursor.execute(
+                            """
+                                INSERT INTO questions (question, options, correct, explanation, asked)
+                                VALUES (?, ?, ?, ?, 0)
+                            """,
+                            (
+                                clean_question,
+                                json.dumps(q["options"]),
+                                q["correct"],
+                                q["explanation"],
+                            ),
+                        )
                         added_count += 1
 
                 conn.commit()
