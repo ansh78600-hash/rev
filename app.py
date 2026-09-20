@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 import time
@@ -30,7 +31,7 @@ def init_db():
         )
     """)
     
-    # 2. Clean up any existing duplicates safely (Added missing WHERE keyword)
+    # 2. Clean up any existing duplicates safely
     cursor.execute("""
         DELETE FROM questions 
         WHERE id NOT IN (
@@ -121,6 +122,10 @@ def call_gemini_with_retry(client, model, contents, config, max_retries=3):
             raise e
 
 
+# Initialize session state for tracking processed inputs to prevent re-processing
+if "last_processed_hash" not in st.session_state:
+    st.session_state.last_processed_hash = None
+
 # Handle Question Bank Generation
 if build_bank_btn:
     if not api_key:
@@ -134,127 +139,145 @@ if build_bank_btn:
     elif upload_option == "Camera se Photo Khinchein" and camera_file is None:
         st.error("Kripya pehle camera se photo khinchein!")
     else:
-        with st.spinner(
-            "AI aapke data ko gahrai se analyze kar raha hai aur original bhasha"
-            " mein MCQs bana raha hai..."
-        ):
-            try:
-                client = genai.Client(api_key=api_key)
+        # Create a unique signature/hash for current input to prevent duplicate processing
+        current_input_signature = ""
+        if upload_option == "Text Paste Karein":
+            current_input_signature = hashlib.md5(notes_text.encode()).hexdigest()
+        elif upload_option == "PDF / Images Upload Karein":
+            file_bytes_combined = b"".join([f.getvalue() for f in uploaded_files])
+            current_input_signature = hashlib.md5(file_bytes_combined).hexdigest()
+        else:
+            current_input_signature = hashlib.md5(camera_file.getvalue()).hexdigest()
 
-                prompt = """
-                You are an expert GS exam creator and educator. Thoroughly and exhaustively analyze ALL the provided study notes, documents, images, or camera captures. 
-                CRITICAL INSTRUCTIONS:
-                1. 100% Comprehensive Coverage: Extract every single fact, date, concept, heading, table, and data point. Do not miss any information. Convert them into high-quality multiple-choice questions (MCQs).
-                2. Language Matching (Strict): Detect the language of the source input. If the source text/notes are in Hindi, generate all questions, options, correct answers, and explanations strictly in HINDI. If they are in English, generate everything strictly in ENGLISH.
-                
-                Return ONLY a valid JSON array in this exact format, with no extra text or markdown wrapping outside JSON:
-                [
-                  {
-                    "question": "Question text in source language?",
-                    "options": ["Option A", "Option B", "Option C", "Option D"],
-                    "correct": "Exact matching string of the correct option",
-                    "explanation": "Detailed explanation in source language."
-                  }
-                ]
-                """
+        # Check if this exact input was already processed
+        if st.session_state.last_processed_hash == current_input_signature:
+            st.warning("Yeh data pehle hi process karke Question Bank mein joda ja chuka hai! Kripya naya data dein.")
+        else:
+            with st.spinner(
+                "AI aapke data ko gahrai se analyze kar raha hai aur original bhasha"
+                " mein MCQs bana raha hai..."
+            ):
+                try:
+                    client = genai.Client(api_key=api_key)
 
-                generation_config = types.GenerateContentConfig(
-                    max_output_tokens=8192, temperature=0.2
-                )
-
-                contents_list = []
-                if upload_option == "PDF / Images Upload Karein":
-                    for file in uploaded_files:
-                        file_bytes = file.getvalue()
-                        mime_type = file.type
-                        contents_list.append(
-                            types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
-                        )
-                elif upload_option == "Camera se Photo Khinchein":
-                    cam_bytes = camera_file.getvalue()
-                    contents_list.append(
-                        types.Part.from_bytes(data=cam_bytes, mime_type="image/jpeg")
-                    )
-
-                # Using Gemini 3.5 Flash Lite model
-                if contents_list:
-                    contents_list.append(prompt)
-                    response = call_gemini_with_retry(
-                        client,
-                        "gemini-3.5-flash-lite",
-                        contents_list,
-                        config=generation_config,
-                    )
-                else:
-                    full_prompt = f"{prompt}\n\nNotes:\n{notes_text[:100000]}"
-                    response = call_gemini_with_retry(
-                        client,
-                        "gemini-3.5-flash-lite",
-                        full_prompt,
-                        config=generation_config,
-                    )
-
-                text_resp = response.text.strip()
-                if text_resp.startswith("```json"):
-                    text_resp = text_resp[7:]
-                if text_resp.endswith("```"):
-                    text_resp = text_resp[:-3]
-
-                questions_list = json.loads(text_resp.strip())
-
-                # --- ADVANCED DEDUPLICATION & INSERTION ---
-                conn = sqlite3.connect(DB_FILE)
-                cursor = conn.cursor()
-
-                # Fetch all existing questions from DB and normalize them
-                cursor.execute("SELECT question FROM questions")
-                existing_db_questions = {
-                    " ".join(row[0].lower().split()) for row in cursor.fetchall()
-                }
-
-                added_count = 0
-                seen_in_batch = set()
-
-                for q in questions_list:
-                    raw_q = q["question"]
-                    if not raw_q:
-                        continue
+                    prompt = """
+                    You are an expert GS exam creator and educator. Thoroughly and exhaustively analyze ALL the provided study notes, documents, images, or camera captures. 
+                    CRITICAL INSTRUCTIONS:
+                    1. 100% Comprehensive Coverage: Extract every single fact, date, concept, heading, table, and data point. Do not miss any information. Convert them into high-quality multiple-choice questions (MCQs).
+                    2. Language Matching (Strict): Detect the language of the source input. If the source text/notes are in Hindi, generate all questions, options, correct answers, and explanations strictly in HINDI. If they are in English, generate everything strictly in ENGLISH.
                     
-                    norm_q = " ".join(raw_q.lower().split())
+                    Return ONLY a valid JSON array in this exact format, with no extra text or markdown wrapping outside JSON:
+                    [
+                      {
+                        "question": "Question text in source language?",
+                        "options": ["Option A", "Option B", "Option C", "Option D"],
+                        "correct": "Exact matching string of the correct option",
+                        "explanation": "Detailed explanation in source language."
+                      }
+                    ]
+                    """
 
-                    if norm_q in existing_db_questions or norm_q in seen_in_batch:
-                        continue
-
-                    seen_in_batch.add(norm_q)
-                    existing_db_questions.add(norm_q)
-
-                    cursor.execute(
-                        """
-                            INSERT INTO questions (question, options, correct, explanation, asked)
-                            VALUES (?, ?, ?, ?, 0)
-                        """,
-                        (
-                            raw_q.strip(),
-                            json.dumps(q["options"]),
-                            q["correct"],
-                            q["explanation"],
-                        ),
+                    generation_config = types.GenerateContentConfig(
+                        max_output_tokens=8192, temperature=0.2
                     )
-                    added_count += 1
 
-                conn.commit()
-                conn.close()
-                st.success(
-                    f"Safaltapoorvak {added_count} naye unique prashn Question Bank mein"
-                    " jod diye gaye hain!"
-                )
-            except json.JSONDecodeError:
-                st.error(
-                    "Error: Data bahut bada hone ke karan format beech mein cut gaya."
-                    " Kripya thoda kam data ya ek-ek karke files upload karein."
-                )
-            except Exception as e:
-                st.error(f"Error: {e}")
+                    contents_list = []
+                    if upload_option == "PDF / Images Upload Karein":
+                        for file in uploaded_files:
+                            file_bytes = file.getvalue()
+                            mime_type = file.type
+                            contents_list.append(
+                                types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
+                            )
+                    elif upload_option == "Camera se Photo Khinchein":
+                        cam_bytes = camera_file.getvalue()
+                        contents_list.append(
+                            types.Part.from_bytes(data=cam_bytes, mime_type="image/jpeg")
+                        )
+
+                    # Using Gemini 3.5 Flash Lite model
+                    if contents_list:
+                        contents_list.append(prompt)
+                        response = call_gemini_with_retry(
+                            client,
+                            "gemini-3.5-flash-lite",
+                            contents_list,
+                            config=generation_config,
+                        )
+                    else:
+                        full_prompt = f"{prompt}\n\nNotes:\n{notes_text[:100000]}"
+                        response = call_gemini_with_retry(
+                            client,
+                            "gemini-3.5-flash-lite",
+                            full_prompt,
+                            config=generation_config,
+                        )
+
+                    text_resp = response.text.strip()
+                    if text_resp.startswith("```json"):
+                        text_resp = text_resp[7:]
+                    if text_resp.endswith("```"):
+                        text_resp = text_resp[:-3]
+
+                    questions_list = json.loads(text_resp.strip())
+
+                    # --- ADVANCED DEDUPLICATION & INSERTION ---
+                    conn = sqlite3.connect(DB_FILE)
+                    cursor = conn.cursor()
+
+                    # Fetch all existing questions from DB and normalize them
+                    cursor.execute("SELECT question FROM questions")
+                    existing_db_questions = {
+                        " ".join(row[0].lower().split()) for row in cursor.fetchall()
+                    }
+
+                    added_count = 0
+                    seen_in_batch = set()
+
+                    for q in questions_list:
+                        raw_q = q["question"]
+                        if not raw_q:
+                            continue
+                        
+                        norm_q = " ".join(raw_q.lower().split())
+
+                        if norm_q in existing_db_questions or norm_q in seen_in_batch:
+                            continue
+
+                        seen_in_batch.add(norm_q)
+                        existing_db_questions.add(norm_q)
+
+                        cursor.execute(
+                            """
+                                INSERT INTO questions (question, options, correct, explanation, asked)
+                                VALUES (?, ?, ?, ?, 0)
+                            """,
+                            (
+                                raw_q.strip(),
+                                json.dumps(q["options"]),
+                                q["correct"],
+                                q["explanation"],
+                            ),
+                        )
+                        added_count += 1
+
+                    conn.commit()
+                    conn.close()
+                    
+                    # Update session state tracker so same input won't process again
+                    st.session_state.last_processed_hash = current_input_signature
+                    
+                    st.success(
+                        f"Safaltapoorvak {added_count} naye unique prashn Question Bank mein"
+                        " jod diye gaye hain!"
+                    )
+                except json.JSONDecodeError:
+                    st.error(
+                        "Error: Data bahut bada hone ke karan format beech mein cut gaya."
+                        " Kripya thoda kam data ya ek-ek karke files upload karein."
+                    )
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
 # Check Database stats
 conn = sqlite3.connect(DB_FILE)
@@ -452,7 +475,7 @@ if st.session_state.test_submitted and st.session_state.current_test:
                 f" `{correct_ans}`\n\n**Spashtikaran:** {q['explanation']}"
             )
 
-    st.markdown("---")
+    st.markdown("---`")
     st.markdown("### Aapka Kul Score")
     st.metric(label="Score", value=f"{score} / {total}")
 
