@@ -30,10 +30,10 @@ def init_db():
         )
     """)
     
-    # 2. Clean up any existing duplicates in the database right now
+    # 2. Clean up any existing duplicates safely (Added missing WHERE keyword)
     cursor.execute("""
         DELETE FROM questions 
-        id NOT IN (
+        WHERE id NOT IN (
             SELECT MIN(id) 
             FROM questions 
             GROUP BY LOWER(TRIM(REPLACE(REPLACE(question, '?', ''), '.', '')))
