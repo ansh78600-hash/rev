@@ -164,7 +164,7 @@ if build_bank_btn:
                         types.Part.from_bytes(data=cam_bytes, mime_type="image/jpeg")
                     )
 
-                # Using Gemini 3.5 Flash Lite model with high daily quota (500 RPD)
+                # Using Gemini 3.5 Flash Lite model
                 if contents_list:
                     contents_list.append(prompt)
                     response = call_gemini_with_retry(
@@ -190,35 +190,48 @@ if build_bank_btn:
 
                 questions_list = json.loads(text_resp.strip())
 
-                # Save to SQLite Database with Strict Duplicate Checking
+                # --- ADVANCED DEDUPLICATION & INSERTION ---
                 conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
+
+                # Fetch all existing questions from DB and normalize them
+                cursor.execute("SELECT question FROM questions")
+                existing_db_questions = {
+                    " ".join(row[0].lower().split()) for row in cursor.fetchall()
+                }
+
                 added_count = 0
+                seen_in_batch = set()
 
                 for q in questions_list:
-                    clean_question = q["question"].strip()
+                    raw_q = q["question"]
+                    if not raw_q:
+                        continue
                     
-                    # Check if question already exists in DB
-                    cursor.execute(
-                        "SELECT id FROM questions WHERE question = ?", (clean_question,)
-                    )
-                    existing_q = cursor.fetchone()
+                    # Normalize question (lowercase and remove extra spaces/newlines)
+                    norm_q = " ".join(raw_q.lower().split())
 
-                    # Insert only if it does not exist
-                    if not existing_q:
-                        cursor.execute(
-                            """
-                                INSERT INTO questions (question, options, correct, explanation, asked)
-                                VALUES (?, ?, ?, ?, 0)
-                            """,
-                            (
-                                clean_question,
-                                json.dumps(q["options"]),
-                                q["correct"],
-                                q["explanation"],
-                            ),
-                        )
-                        added_count += 1
+                    # Check if it already exists in DB or in the current batch
+                    if norm_q in existing_db_questions or norm_q in seen_in_batch:
+                        continue
+
+                    # Mark as seen in this batch
+                    seen_in_batch.add(norm_q)
+
+                    # Insert into database
+                    cursor.execute(
+                        """
+                            INSERT INTO questions (question, options, correct, explanation, asked)
+                            VALUES (?, ?, ?, ?, 0)
+                        """,
+                        (
+                            raw_q.strip(),
+                            json.dumps(q["options"]),
+                            q["correct"],
+                            q["explanation"],
+                        ),
+                    )
+                    added_count += 1
 
                 conn.commit()
                 conn.close()
