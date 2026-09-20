@@ -10,13 +10,15 @@ st.set_page_config(
     layout="wide",
 )
 
-# Database setup with UNIQUE constraint to prevent duplicates
+# Database setup with Automatic Duplicate Cleanup
 DB_FILE = "master_question_bank.db"
 
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    
+    # 1. Create table if not exists
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,6 +29,17 @@ def init_db():
             asked INTEGER DEFAULT 0
         )
     """)
+    
+    # 2. Clean up any existing duplicates in the database right now
+    cursor.execute("""
+        DELETE FROM questions 
+        id NOT IN (
+            SELECT MIN(id) 
+            FROM questions 
+            GROUP BY LOWER(TRIM(REPLACE(REPLACE(question, '?', ''), '.', '')))
+        )
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -213,6 +226,7 @@ if build_bank_btn:
                         continue
 
                     seen_in_batch.add(norm_q)
+                    existing_db_questions.add(norm_q)
 
                     cursor.execute(
                         """
