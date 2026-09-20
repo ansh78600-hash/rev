@@ -169,7 +169,7 @@ if build_bank_btn:
                     contents_list.append(prompt)
                     response = call_gemini_with_retry(
                         client,
-                        "gemini-3.6-flash",
+                        "gemini-3.5-flash-lite",
                         contents_list,
                         config=generation_config,
                     )
@@ -177,7 +177,7 @@ if build_bank_btn:
                     full_prompt = f"{prompt}\n\nNotes:\n{notes_text[:100000]}"
                     response = call_gemini_with_retry(
                         client,
-                        "gemini-3.6-flash",
+                        "gemini-3.5-flash-lite",
                         full_prompt,
                         config=generation_config,
                     )
