@@ -7,7 +7,6 @@ from google.genai import types
 
 st.set_page_config(
     page_title="AI Master GS Revision & Mock Test App",
-    page_icon="🎯",
     layout="wide",
 )
 
@@ -34,15 +33,15 @@ def init_db():
 
 init_db()
 
-st.title("🎯 AI Master GS Revision & Test Platform")
+st.title("AI Master GS Revision & Test Platform")
 st.markdown(
-    "Apne notes (Text, PDF, Images ya Camera) se **100% data coverage** ke "
-    "sath smart MCQs banayein. Bhasha wahi hogi jo aapka data dega!"
+    "Apne notes (Text, PDF, Images ya Camera) se **100% data coverage** ke"
+    " sath smart MCQs banayein. Bhasha wahi hogi jo aapka data dega!"
 )
 
 # Sidebar for Input & Uploads
 with st.sidebar:
-    st.header("📂 Data Input & Settings")
+    st.header("Data Input & Settings")
     api_key = st.text_input("Google Gemini API Key darj karein", type="password")
     st.markdown(
         "[Free API Key yahan se prapt karein](https://aistudio.google.com/app/apikey)"
@@ -79,10 +78,10 @@ with st.sidebar:
         camera_file = st.camera_input("Apne notes ki live photo khinchein")
 
     st.info(
-        "💡 Tip: Duplicate questions automatic filter ho jayenge. Aap jitna "
-        "chahein utna data feed kar sakte hain!"
+        "Tip: Duplicate questions automatic filter ho jayenge. Aap jitna"
+        " chahein utna data feed kar sakte hain!"
     )
-    build_bank_btn = st.button("🚀 Question Bank mein Sawal Jodein")
+    build_bank_btn = st.button("Question Bank mein Sawal Jodein")
 
 
 # Function with auto-retry for 503 and 429 (Rate Limit) errors
@@ -123,8 +122,8 @@ if build_bank_btn:
         st.error("Kripya pehle camera se photo khinchein!")
     else:
         with st.spinner(
-            "AI aapke data ko gahrai se analyze kar raha hai aur original bhasha "
-            "mein MCQs bana raha hai..."
+            "AI aapke data ko gahrai se analyze kar raha hai aur original bhasha"
+            " mein MCQs bana raha hai..."
         ):
             try:
                 client = genai.Client(api_key=api_key)
@@ -208,17 +207,13 @@ if build_bank_btn:
                     if not raw_q:
                         continue
                     
-                    # Normalize question (lowercase and remove extra spaces/newlines)
                     norm_q = " ".join(raw_q.lower().split())
 
-                    # Check if it already exists in DB or in the current batch
                     if norm_q in existing_db_questions or norm_q in seen_in_batch:
                         continue
 
-                    # Mark as seen in this batch
                     seen_in_batch.add(norm_q)
 
-                    # Insert into database
                     cursor.execute(
                         """
                             INSERT INTO questions (question, options, correct, explanation, asked)
@@ -236,13 +231,13 @@ if build_bank_btn:
                 conn.commit()
                 conn.close()
                 st.success(
-                    f"Safaltapoorvak {added_count} naye unique prashn Question Bank mein "
-                    "jod diye gaye hain!"
+                    f"Safaltapoorvak {added_count} naye unique prashn Question Bank mein"
+                    " jod diye gaye hain!"
                 )
             except json.JSONDecodeError:
                 st.error(
-                    "Error: Data bahut bada hone ke karan format beech mein cut gaya. "
-                    "Kripya thoda kam data ya ek-ek karke files upload karein."
+                    "Error: Data bahut bada hone ke karan format beech mein cut gaya."
+                    " Kripya thoda kam data ya ek-ek karke files upload karein."
                 )
             except Exception as e:
                 st.error(f"Error: {e}")
@@ -265,7 +260,8 @@ col3.metric("Puche ja chuke Prashn", total_q - unasked_q)
 # --- QUESTION BANK MANAGEMENT SECTION ---
 st.markdown("---")
 with st.expander(
-    "📋 Question Bank Management (Sawal Dekhein, Ek-Ek Delete Karein ya Poora Bank Reset Karein)",
+    "Question Bank Management (Sawal Dekhein, Ek-Ek Delete Karein ya Poora Bank"
+    " Reset Karein)",
     expanded=False,
 ):
     st.subheader("Feed kiye gaye sabhi Questions ki List")
@@ -284,8 +280,8 @@ with st.expander(
             cols = st.columns([0.85, 0.15])
             with cols[0]:
                 st.markdown(
-                    f"**{idx}. (ID: {q_id}) {q_text}**\n\n*Sahi Uttar:* "
-                    f"`{q_correct}`\n\n*Spashtikaran:* {q_exp}"
+                    f"**{idx}. (ID: {q_id}) {q_text}**\n\n*Sahi Uttar:*"
+                    f" `{q_correct}`\n\n*Spashtikaran:* {q_exp}"
                 )
             with cols[1]:
                 if st.button("Delete", key=f"del_q_{q_id}"):
@@ -299,7 +295,7 @@ with st.expander(
             st.markdown("---")
 
         if st.button(
-            "⚠️ Sabhi Questions Ek Saath Delete Karein (Reset Bank)",
+            "Sabhi Questions Ek Saath Delete Karein (Reset Bank)",
             type="primary",
         ):
             conn = sqlite3.connect(DB_FILE)
@@ -312,11 +308,11 @@ with st.expander(
 
 # --- DAILY MOCK TEST SECTION ---
 st.markdown("---")
-st.subheader("📝 Miscellaneous Mock Test (No-Repeat Mode)")
+st.subheader("Miscellaneous Mock Test (No-Repeat Mode)")
 test_size = st.slider(
     "Aaj ke test mein kitne prashn chahiye?", 5, 100, 25, step=5
 )
-start_test_btn = st.button("▶️ Test Shuru Karein")
+start_test_btn = st.button("Test Shuru Karein")
 
 if "current_test" not in st.session_state:
     st.session_state.current_test = None
@@ -332,7 +328,8 @@ if start_test_btn:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, question, options, correct, explanation FROM questions WHERE asked = 0 ORDER BY RANDOM() LIMIT ?",
+            "SELECT id, question, options, correct, explanation FROM questions WHERE"
+            " asked = 0 ORDER BY RANDOM() LIMIT ?",
             (test_size,),
         )
         rows = cursor.fetchall()
@@ -341,7 +338,8 @@ if start_test_btn:
             cursor.execute("UPDATE questions SET asked = 0")
             conn.commit()
             cursor.execute(
-                "SELECT id, question, options, correct, explanation FROM questions ORDER BY RANDOM() LIMIT ?",
+                "SELECT id, question, options, correct, explanation FROM questions"
+                " ORDER BY RANDOM() LIMIT ?",
                 (test_size,),
             )
             rows = cursor.fetchall()
@@ -392,7 +390,7 @@ if st.session_state.current_test:
         submit_btn = (
             False
             if st.session_state.test_submitted
-            else st.form_submit_button("📥 Test Submit Karein")
+            else st.form_submit_button("Test Submit Karein")
         )
 
         if submit_btn:
@@ -417,7 +415,7 @@ if st.session_state.test_submitted and st.session_state.current_test:
     total = len(test_q)
 
     st.markdown("---")
-    st.header("📊 Test Parinam aur Solution (Results & Explanations)")
+    st.header("Test Parinam aur Solution (Results & Explanations)")
 
     for i, q in enumerate(test_q):
         user_ans = st.session_state.final_answers.get(q["id"])
@@ -426,22 +424,25 @@ if st.session_state.test_submitted and st.session_state.current_test:
         if user_ans == correct_ans:
             score += 1
             st.success(
-                f"**Prashn {i+1}: Sahi!**\n\nAapka uttar: `{user_ans}`\n\n**Spashtikaran:** {q['explanation']}"
+                f"**Prashn {i+1}: Sahi!**\n\nAapka uttar: `{user_ans}`\n\n**Spashtikaran:"
+                f"** {q['explanation']}"
             )
         elif user_ans is None:
             st.warning(
-                f"**Prashn {i+1}: Aapne uttar nahi diya.**\n\nSahi uttar: `{correct_ans}`\n\n**Spashtikaran:** {q['explanation']}"
+                f"**Prashn {i+1}: Aapne uttar nahi diya.**\n\nSahi uttar:"
+                f" `{correct_ans}`\n\n**Spashtikaran:** {q['explanation']}"
             )
         else:
             st.error(
-                f"**Prashn {i+1}: Galat!**\n\nAapka uttar: `{user_ans}` | Sahi uttar: `{correct_ans}`\n\n**Spashtikaran:** {q['explanation']}"
+                f"**Prashn {i+1}: Galat!**\n\nAapka uttar: `{user_ans}` | Sahi uttar:"
+                f" `{correct_ans}`\n\n**Spashtikaran:** {q['explanation']}"
             )
 
     st.markdown("---")
-    st.markdown("### 🏆 Aapka Kul Score")
+    st.markdown("### Aapka Kul Score")
     st.metric(label="Score", value=f"{score} / {total}")
 
-    if st.button("🔄 Naya Test Shuru Karein (Reset Test)"):
+    if st.button("Naya Test Shuru Karein (Reset Test)"):
         st.session_state.current_test = None
         st.session_state.test_submitted = False
         st.session_state.final_answers = {}
